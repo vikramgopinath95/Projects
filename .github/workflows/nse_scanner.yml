@@ -1,0 +1,57 @@
+name: NSE Morning Scanner
+
+on:
+  schedule:
+    # 8:00 AM IST = 2:30 AM UTC, Monday–Friday
+    # Note: GitHub Actions cron can run 5–15 min late during peak hours.
+    - cron: '30 2 * * 1-5'
+
+  # Lets you trigger a run manually from the GitHub Actions tab
+  workflow_dispatch:
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # Write scanner_config.json from GitHub Secrets.
+      # This file is in .gitignore so it is never committed.
+      - name: Create scanner_config.json from secrets
+        env:
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+        shell: python
+        run: |
+          import json, os
+          config = {
+              "gmail_user": os.environ["GMAIL_USER"],
+              "gmail_app_password": os.environ["GMAIL_APP_PASSWORD"],
+              "recipients": [os.environ["GMAIL_USER"]],
+              "thresholds": {
+                  "capex_to_mcap_pct": 50.0,
+                  "spurt_repeat_days": 7,
+                  "announcement_lookback_days": 3
+              }
+          }
+          with open("scanner_config.json", "w") as f:
+              json.dump(config, f, indent=2)
+          print("scanner_config.json created.")
+
+      - name: Create scanner_logs directory
+        run: mkdir -p scanner_logs
+
+      - name: Run NSE Morning Scanner
+        run: python nse_morning_scanner.py
